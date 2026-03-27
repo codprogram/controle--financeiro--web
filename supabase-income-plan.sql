@@ -1,18 +1,12 @@
 create table if not exists financial_profiles (
     user_id uuid primary key references auth.users(id) on delete cascade,
-    setembro numeric not null default 0,
-    outubro numeric not null default 0,
-    novembro numeric not null default 0,
-    dezembro numeric not null default 0,
-    janeiro numeric not null default 0,
-    fevereiro numeric not null default 0,
-    marco numeric not null default 0,
-    abril numeric not null default 0,
-    maio numeric not null default 0,
-    junho numeric not null default 0,
-    julho numeric not null default 0,
+    recurring_income numeric not null default 0,
+    reserve_amount numeric not null default 0,
     updated_at timestamptz not null default timezone('utc', now())
 );
+
+alter table financial_profiles add column if not exists recurring_income numeric not null default 0;
+alter table financial_profiles add column if not exists reserve_amount numeric not null default 0;
 
 alter table financial_profiles enable row level security;
 

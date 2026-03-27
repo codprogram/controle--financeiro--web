@@ -1,20 +1,22 @@
 :root {
-    --bg: #f6f0e7;
-    --surface: rgba(255, 252, 247, 0.82);
-    --surface-strong: #fffdfa;
-    --text: #1e2330;
-    --muted: #646a78;
-    --line: rgba(30, 35, 48, 0.08);
-    --accent: #0f766e;
-    --accent-strong: #115e59;
-    --accent-soft: rgba(15, 118, 110, 0.12);
-    --warm: #c77d32;
-    --warm-soft: rgba(199, 125, 50, 0.12);
-    --danger: #b42318;
-    --danger-soft: rgba(180, 35, 24, 0.12);
-    --success: #15803d;
-    --success-soft: rgba(21, 128, 61, 0.12);
-    --shadow: 0 24px 60px rgba(45, 43, 50, 0.08);
+    --bg: #0b1020;
+    --bg-soft: #11182b;
+    --surface: rgba(18, 25, 42, 0.82);
+    --surface-strong: #151d33;
+    --surface-alt: #0f1527;
+    --text: #edf1f7;
+    --muted: #9ca8c1;
+    --line: rgba(255, 255, 255, 0.08);
+    --accent: #14b8a6;
+    --accent-strong: #2dd4bf;
+    --accent-soft: rgba(20, 184, 166, 0.12);
+    --warning: #f59e0b;
+    --warning-soft: rgba(245, 158, 11, 0.12);
+    --danger: #ef4444;
+    --danger-soft: rgba(239, 68, 68, 0.12);
+    --success: #22c55e;
+    --success-soft: rgba(34, 197, 94, 0.12);
+    --shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
     --display-font: var(--font-display);
     --body-font: var(--font-body);
 }
@@ -26,9 +28,10 @@
 html {
     min-height: 100%;
     background:
-        radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 26%),
-        radial-gradient(circle at 88% 0%, rgba(199, 125, 50, 0.18), transparent 20%),
-        linear-gradient(180deg, #f7f1e7 0%, #f2ece3 100%);
+        radial-gradient(circle at top left, rgba(20, 184, 166, 0.14), transparent 24%),
+        radial-gradient(circle at top right, rgba(99, 102, 241, 0.14), transparent 20%),
+        radial-gradient(circle at bottom center, rgba(245, 158, 11, 0.08), transparent 30%),
+        linear-gradient(180deg, #090d18 0%, #0b1020 100%);
 }
 
 body {
@@ -65,7 +68,14 @@ textarea {
     display: grid;
     grid-template-columns: 1.15fr 0.85fr;
     gap: 28px;
-    padding: 30px;
+    padding: 32px;
+}
+
+.hero-dark {
+    background:
+        linear-gradient(135deg, rgba(20, 184, 166, 0.08), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
+        var(--surface);
 }
 
 .hero-copy-block {
@@ -94,11 +104,11 @@ h3 {
 
 .hero-card h1 {
     max-width: 12ch;
-    font-size: clamp(2.5rem, 5vw, 5rem);
+    font-size: clamp(2.8rem, 5vw, 5.2rem);
 }
 
 .hero-copy {
-    max-width: 60ch;
+    max-width: 62ch;
     margin: 18px 0 0;
     color: var(--muted);
     font-size: 1.02rem;
@@ -113,11 +123,11 @@ h3 {
 
 .sync-badge,
 .hero-metrics,
-.month-pill,
 .table-row,
 .mini-cell,
-.income-cell {
-    background: rgba(255, 255, 255, 0.68);
+.income-cell,
+.archive-card {
+    background: rgba(255, 255, 255, 0.03);
 }
 
 .sync-badge {
@@ -168,6 +178,7 @@ h3 {
 .secondary-button,
 .danger-button,
 .ghost-button,
+.archive-toggle,
 .forecast-card {
     cursor: pointer;
     border: 0;
@@ -178,24 +189,30 @@ h3 {
 .secondary-button:hover,
 .danger-button:hover,
 .ghost-button:hover,
+.archive-toggle:hover,
 .forecast-card:hover {
     transform: translateY(-1px);
 }
 
 .primary-button {
-    background: linear-gradient(135deg, var(--accent), #14b8a6);
+    background: linear-gradient(135deg, var(--accent), #0ea5e9);
     color: white;
     padding: 14px 18px;
     border-radius: 18px;
 }
 
 .secondary-button,
-.ghost-button {
+.ghost-button,
+.archive-toggle {
     color: var(--text);
     padding: 14px 18px;
     border-radius: 18px;
     border: 1px solid var(--line);
     background: var(--surface-strong);
+}
+
+.dark-button {
+    background: #121a2f;
 }
 
 .ghost-button,
@@ -204,8 +221,8 @@ h3 {
 }
 
 .danger-button {
-    background: rgba(180, 83, 9, 0.13);
-    color: var(--danger);
+    background: rgba(239, 68, 68, 0.12);
+    color: #ff9c9c;
     padding: 10px 14px;
     border-radius: 14px;
 }
@@ -216,7 +233,7 @@ h3 {
 
 .forecast-strip {
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 12px;
     margin-top: 22px;
 }
@@ -226,23 +243,24 @@ h3 {
     gap: 12px;
     padding: 18px;
     text-align: left;
+    background: var(--surface-alt);
 }
 
 .forecast-card.active {
-    border-color: rgba(15, 118, 110, 0.4);
-    box-shadow: 0 16px 36px rgba(15, 118, 110, 0.12);
+    border-color: rgba(45, 212, 191, 0.52);
+    box-shadow: 0 18px 36px rgba(20, 184, 166, 0.12);
 }
 
 .forecast-card.success {
-    background: linear-gradient(180deg, rgba(21, 128, 61, 0.06), rgba(255, 255, 255, 0.78));
+    background: linear-gradient(180deg, rgba(34, 197, 94, 0.1), rgba(17, 24, 39, 0.92));
 }
 
 .forecast-card.warning {
-    background: linear-gradient(180deg, rgba(199, 125, 50, 0.08), rgba(255, 255, 255, 0.78));
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.1), rgba(17, 24, 39, 0.92));
 }
 
 .forecast-card.danger {
-    background: linear-gradient(180deg, rgba(180, 35, 24, 0.08), rgba(255, 255, 255, 0.78));
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.1), rgba(17, 24, 39, 0.92));
 }
 
 .forecast-header {
@@ -250,8 +268,25 @@ h3 {
     gap: 4px;
 }
 
-.forecast-header span {
+.forecast-header span,
+.forecast-values small,
+.summary-card p,
+.summary-card span,
+.panel-count,
+.income-helper,
+.bar-copy span,
+.dual-bar-label,
+.month-input-grid span,
+.row-main p,
+.row-amounts span,
+.mini-cell span,
+.archive-card small,
+.archive-card span,
+.auth-message {
     color: var(--muted);
+}
+
+.forecast-header span {
     font-size: 0.76rem;
     text-transform: uppercase;
     letter-spacing: 0.12em;
@@ -263,7 +298,7 @@ h3 {
     border-radius: 999px;
     font-size: 0.8rem;
     font-weight: 700;
-    background: rgba(255, 255, 255, 0.72);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .forecast-values {
@@ -271,12 +306,8 @@ h3 {
     gap: 6px;
 }
 
-.forecast-values small {
-    color: var(--muted);
-}
-
 .forecast-values strong {
-    font-size: 1.15rem;
+    font-size: 1.18rem;
 }
 
 .summary-grid {
@@ -290,19 +321,13 @@ h3 {
     padding: 24px;
 }
 
-.summary-card p,
-.summary-card span {
-    margin: 0;
-    color: var(--muted);
-}
-
 .summary-card h2 {
     margin: 14px 0 10px;
     font-size: clamp(1.8rem, 3vw, 3rem);
 }
 
 .focus-card {
-    background: linear-gradient(135deg, rgba(15, 118, 110, 0.95), rgba(19, 78, 74, 0.92));
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.95), rgba(14, 165, 233, 0.92));
     color: white;
 }
 
@@ -311,16 +336,20 @@ h3 {
     color: rgba(255, 255, 255, 0.82);
 }
 
+.dark-card {
+    background: var(--surface-alt);
+}
+
 .status-card.success {
-    background: linear-gradient(180deg, rgba(21, 128, 61, 0.12), rgba(255, 255, 255, 0.82));
+    background: linear-gradient(180deg, rgba(34, 197, 94, 0.12), rgba(18, 25, 42, 0.9));
 }
 
 .status-card.warning {
-    background: linear-gradient(180deg, rgba(199, 125, 50, 0.12), rgba(255, 255, 255, 0.82));
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(18, 25, 42, 0.9));
 }
 
 .status-card.danger {
-    background: linear-gradient(180deg, rgba(180, 35, 24, 0.12), rgba(255, 255, 255, 0.82));
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.12), rgba(18, 25, 42, 0.9));
 }
 
 .editor-grid {
@@ -330,11 +359,15 @@ h3 {
 }
 
 .editor-grid.three-columns {
-    grid-template-columns: 0.9fr 0.9fr 1.2fr;
+    grid-template-columns: 0.8fr 0.95fr 1.25fr;
 }
 
 .panel {
     padding: 24px;
+}
+
+.dark-panel {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), var(--surface);
 }
 
 .panel-header {
@@ -345,34 +378,37 @@ h3 {
     margin-bottom: 18px;
 }
 
-.panel-count {
-    color: var(--muted);
-    font-size: 0.94rem;
+.static-income-grid,
+.bars,
+.table-list,
+.archive-grid,
+.entry-form,
+.income-grid {
+    display: grid;
+    gap: 14px;
 }
 
 .income-helper {
     margin-bottom: 16px;
-    color: var(--muted);
     line-height: 1.6;
 }
 
-.income-grid {
-    display: grid;
-    gap: 10px;
+.static-income-grid {
     margin-bottom: 16px;
 }
 
-.income-cell {
+.income-cell,
+.archive-card {
     display: grid;
-    gap: 6px;
-    padding: 14px;
+    gap: 8px;
+    padding: 16px;
     border-radius: 18px;
     border: 1px solid var(--line);
 }
 
 .income-cell.active {
-    border-color: rgba(15, 118, 110, 0.26);
-    background: var(--accent-soft);
+    border-color: rgba(45, 212, 191, 0.35);
+    background: rgba(20, 184, 166, 0.08);
 }
 
 .income-cell span {
@@ -381,91 +417,59 @@ h3 {
     font-weight: 600;
 }
 
-.income-cell input {
+.income-cell input,
+.entry-form input,
+.entry-form textarea {
     width: 100%;
-    padding: 12px 14px;
-    border-radius: 14px;
+    padding: 13px 15px;
+    border-radius: 15px;
     border: 1px solid var(--line);
-    background: var(--surface-strong);
+    background: #0d1425;
+    color: var(--text);
 }
 
-.bars {
-    display: grid;
-    gap: 14px;
+.entry-form textarea {
+    resize: vertical;
 }
 
-.bar-row {
+.bar-row,
+.dual-bar-stack,
+.auth-copy,
+.auth-form {
     display: grid;
     gap: 10px;
 }
 
 .bar-copy {
     display: flex;
-    align-items: center;
     justify-content: space-between;
-}
-
-.bar-copy span {
-    color: var(--muted);
-}
-
-.dual-bar-stack {
-    display: grid;
-    gap: 8px;
-}
-
-.dual-bar-label {
-    color: var(--muted);
-    font-size: 0.76rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    gap: 12px;
 }
 
 .bar-track {
     width: 100%;
     height: 14px;
     border-radius: 999px;
-    background: rgba(15, 118, 110, 0.08);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .bar-fill {
     height: 100%;
     border-radius: inherit;
-    background: linear-gradient(135deg, rgba(15, 118, 110, 0.56), rgba(20, 184, 166, 0.78));
 }
 
 .bar-fill.success {
-    background: linear-gradient(135deg, #15803d, #22c55e);
+    background: linear-gradient(135deg, #22c55e, #4ade80);
 }
 
 .bar-fill.warning {
-    background: linear-gradient(135deg, #c77d32, #f59e0b);
-}
-
-.entry-form {
-    display: grid;
-    gap: 14px;
+    background: linear-gradient(135deg, #f59e0b, #fbbf24);
 }
 
 .form-lead {
     display: grid;
     grid-template-columns: 1.1fr 0.9fr;
     gap: 12px;
-}
-
-.entry-form input,
-.entry-form textarea {
-    width: 100%;
-    padding: 14px 16px;
-    background: var(--surface-strong);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    color: var(--text);
-}
-
-.entry-form textarea {
-    resize: vertical;
-    min-height: 100%;
 }
 
 .month-input-grid {
@@ -479,20 +483,16 @@ h3 {
     gap: 6px;
 }
 
-.month-input-grid span {
-    color: var(--muted);
-    font-size: 0.76rem;
+.month-input-grid span,
+.mini-cell span {
+    font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
 }
 
-.accounts-panel {
+.accounts-panel,
+.archive-panel {
     margin-top: 22px;
-}
-
-.table-list {
-    display: grid;
-    gap: 14px;
 }
 
 .table-row {
@@ -502,20 +502,14 @@ h3 {
 }
 
 .table-row.editing {
-    border-color: rgba(15, 118, 110, 0.24);
-    box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.14);
+    border-color: rgba(45, 212, 191, 0.34);
+    box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.14);
 }
 
 .row-main {
     display: flex;
     justify-content: space-between;
     gap: 18px;
-}
-
-.row-main p,
-.row-amounts span {
-    margin: 6px 0 0;
-    color: var(--muted);
 }
 
 .row-amounts {
@@ -536,18 +530,8 @@ h3 {
     border-radius: 14px;
 }
 
-.mini-cell span {
-    color: var(--muted);
-    font-size: 0.72rem;
-    text-transform: uppercase;
-}
-
-.mini-cell strong {
-    font-size: 0.85rem;
-}
-
 .mini-cell.active {
-    background: var(--accent-soft);
+    background: rgba(20, 184, 166, 0.12);
 }
 
 .row-actions {
@@ -555,6 +539,30 @@ h3 {
     justify-content: flex-end;
     gap: 10px;
     margin-top: 14px;
+}
+
+.archive-toggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.archive-grid {
+    margin-top: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.archive-card.success {
+    border-color: rgba(34, 197, 94, 0.24);
+}
+
+.archive-card.warning {
+    border-color: rgba(245, 158, 11, 0.24);
+}
+
+.archive-card.danger {
+    border-color: rgba(239, 68, 68, 0.24);
 }
 
 .auth-shell {
@@ -568,20 +576,6 @@ h3 {
     grid-template-columns: 1.05fr 0.95fr;
     gap: 24px;
     padding: 30px;
-}
-
-.auth-copy {
-    display: grid;
-    align-content: center;
-}
-
-.auth-form {
-    align-content: center;
-}
-
-.auth-message {
-    color: var(--muted);
-    min-height: 1.5em;
 }
 
 @media (max-width: 1240px) {

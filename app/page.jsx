@@ -2,14 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-    buildIncomePlanPayload,
     buildPayloadFromForm,
     currency,
     currentMonthKey,
     emptyForm,
-    emptyIncomePlan,
-    incomePlanFormFromValues,
-    normalizeIncomePlan,
     normalizeItem,
     seedItems
 } from "../lib/finance";
@@ -17,7 +13,12 @@ import { months } from "../lib/months";
 import { getSupabaseClient, isSupabaseConfigured } from "../lib/supabase";
 
 const itemsStorageKey = "controle-financeiro-marcos-filho-v1";
-const incomeStorageKey = "controle-financeiro-income-plan-v1";
+const profileStorageKey = "controle-financeiro-profile-v2";
+
+const emptyProfile = {
+    recurringIncome: 0,
+    reserveAmount: 0
+};
 
 function toDatabaseRow(item, userId) {
     return {
@@ -62,26 +63,20 @@ function fromDatabaseRow(row) {
     });
 }
 
-function toIncomeProfileRow(plan, userId) {
+function normalizeProfile(row) {
     return {
-        user_id: userId,
-        setembro: plan.setembro,
-        outubro: plan.outubro,
-        novembro: plan.novembro,
-        dezembro: plan.dezembro,
-        janeiro: plan.janeiro,
-        fevereiro: plan.fevereiro,
-        marco: plan.marco,
-        abril: plan.abril,
-        maio: plan.maio,
-        junho: plan.junho,
-        julho: plan.julho,
-        updated_at: new Date().toISOString()
+        recurringIncome: Number(row?.recurring_income ?? row?.recurringIncome ?? 0),
+        reserveAmount: Number(row?.reserve_amount ?? row?.reserveAmount ?? 0)
     };
 }
 
-function fromIncomeProfileRow(row) {
-    return normalizeIncomePlan(row);
+function toProfileRow(profile, userId) {
+    return {
+        user_id: userId,
+        recurring_income: profile.recurringIncome,
+        reserve_amount: profile.reserveAmount,
+        updated_at: new Date().toISOString()
+    };
 }
 
 function formFromItem(item) {
@@ -92,49 +87,61 @@ function formFromItem(item) {
     };
 }
 
-function buildVisibleMonths(currentMonth) {
-    const currentIndex = months.findIndex((month) => month.key === currentMonth);
-    const start = currentIndex <= 0 ? months.length - 1 : currentIndex - 1;
-    return Array.from({ length: 7 }, (_, index) => months[(start + index) % months.length]);
+function parseCurrencyInput(value) {
+    return Number(String(value || "0").replace(",", ".")) || 0;
 }
 
-function buildHealthStatus(income, expenses) {
-    const balance = income - expenses;
-    if (income <= 0) {
+function buildVisibleMonths(currentMonth) {
+    const currentIndex = months.findIndex((month) => month.key === currentMonth);
+    return Array.from({ length: 6 }, (_, index) => months[(currentIndex + index) % months.length]);
+}
+
+function buildArchiveMonths(currentMonth) {
+    const visibleKeys = new Set(buildVisibleMonths(currentMonth).map((month) => month.key));
+    return months.filter((month) => !visibleKeys.has(month.key));
+}
+
+function buildHealthStatus(available, expenses) {
+    const balance = available - expenses;
+    if (available <= 0) {
         return {
             tone: "warning",
             label: "Sem base",
-            description: "Defina seus ganhos potenciais para ler o risco do mes."
+            description: "Defina seu ganho recorrente e a sobra acumulada."
         };
     }
     if (balance < 0) {
         return {
             tone: "danger",
             label: "Vermelho",
-            description: "As despesas previstas passam da sua entrada potencial."
+            description: "As faturas previstas passam do total disponivel."
         };
     }
-    if (balance <= income * 0.15) {
+    if (balance <= available * 0.15) {
         return {
             tone: "warning",
             label: "Amarelo",
-            description: "O mes segue positivo, mas com folga curta."
+            description: "O mes fecha positivo, mas com folga apertada."
         };
     }
     return {
         tone: "success",
         label: "Verde",
-        description: "Sua folga projetada esta saudavel neste periodo."
+        description: "Seu saldo projetado esta confortavel neste periodo."
     };
 }
 
 export default function HomePage() {
     const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
     const [items, setItems] = useState([]);
-    const [incomePlan, setIncomePlan] = useState(normalizeIncomePlan(emptyIncomePlan));
-    const [incomeForm, setIncomeForm] = useState(incomePlanFormFromValues(emptyIncomePlan));
+    const [profile, setProfile] = useState(emptyProfile);
+    const [profileForm, setProfileForm] = useState({
+        recurringIncome: "",
+        reserveAmount: ""
+    });
     const [form, setForm] = useState(emptyForm);
     const [editingId, setEditingId] = useState(null);
+    const [showArchive, setShowArchive] = useState(false);
     const [hydrated, setHydrated] = useState(false);
     const [syncMode, setSyncMode] = useState("local");
     const [statusMessage, setStatusMessage] = useState("Carregando seus dados...");
@@ -162,29 +169,18 @@ export default function HomePage() {
             }
         };
 
-        const loadLocalIncomePlan = () => {
-            const raw = window.localStorage.getItem(incomeStorageKey);
-            if (!raw) {
-                const normalized = normalizeIncomePlan(emptyIncomePlan);
-                setIncomePlan(normalized);
-                setIncomeForm(incomePlanFormFromValues(normalized));
-                return;
-            }
-
-            try {
-                const parsed = JSON.parse(raw);
-                const normalized = normalizeIncomePlan(parsed);
-                setIncomePlan(normalized);
-                setIncomeForm(incomePlanFormFromValues(normalized));
-            } catch {
-                const normalized = normalizeIncomePlan(emptyIncomePlan);
-                setIncomePlan(normalized);
-                setIncomeForm(incomePlanFormFromValues(normalized));
-            }
+        const loadLocalProfile = () => {
+            const raw = window.localStorage.getItem(profileStorageKey);
+            const normalized = raw ? normalizeProfile(JSON.parse(raw)) : emptyProfile;
+            setProfile(normalized);
+            setProfileForm({
+                recurringIncome: String(normalized.recurringIncome || ""),
+                reserveAmount: String(normalized.reserveAmount || "")
+            });
         };
 
         const loadRemote = async (supabase, currentSession) => {
-            const [{ data: itemData, error: itemError }, incomeResult] = await Promise.all([
+            const [{ data: itemData, error: itemError }, profileResult] = await Promise.all([
                 supabase.from("planning_items").select("*").order("name", { ascending: true }),
                 supabase.from("financial_profiles").select("*").eq("user_id", currentSession.user.id).maybeSingle()
             ]);
@@ -192,7 +188,7 @@ export default function HomePage() {
             if (itemError) {
                 setStatusMessage("Falha ao carregar as categorias no Supabase.");
                 setItems([]);
-                loadLocalIncomePlan();
+                loadLocalProfile();
                 setHydrated(true);
                 return;
             }
@@ -206,7 +202,7 @@ export default function HomePage() {
                 if (insertResult.error) {
                     setStatusMessage("Conta autenticada, mas sem permissao para semear categorias.");
                     setItems([]);
-                    loadLocalIncomePlan();
+                    loadLocalProfile();
                     setHydrated(true);
                     return;
                 }
@@ -216,28 +212,17 @@ export default function HomePage() {
                 setItems(itemData.map(fromDatabaseRow));
             }
 
-            if (incomeResult.error) {
-                loadLocalIncomePlan();
-                setStatusMessage(`Categorias sincronizadas. Ganhos potenciais em modo local ate rodar a migracao.`);
-            } else if (!incomeResult.data) {
-                const zeroPlan = normalizeIncomePlan(emptyIncomePlan);
-                const upsertResult = await supabase
-                    .from("financial_profiles")
-                    .upsert(toIncomeProfileRow(zeroPlan, currentSession.user.id), { onConflict: "user_id" });
-
-                if (upsertResult.error) {
-                    loadLocalIncomePlan();
-                    setStatusMessage(`Categorias sincronizadas. Ganhos potenciais em modo local ate rodar a migracao.`);
-                } else {
-                    setIncomePlan(zeroPlan);
-                    setIncomeForm(incomePlanFormFromValues(zeroPlan));
-                    setStatusMessage(`Panorama completo sincronizando com Supabase para ${currentSession.user.email}.`);
-                }
+            if (profileResult.error) {
+                loadLocalProfile();
+                setStatusMessage("Categorias sincronizadas. Base de ganhos ainda em modo local.");
             } else {
-                const normalizedIncomePlan = fromIncomeProfileRow(incomeResult.data);
-                setIncomePlan(normalizedIncomePlan);
-                setIncomeForm(incomePlanFormFromValues(normalizedIncomePlan));
-                setStatusMessage(`Panorama completo sincronizando com Supabase para ${currentSession.user.email}.`);
+                const normalizedProfile = normalizeProfile(profileResult.data);
+                setProfile(normalizedProfile);
+                setProfileForm({
+                    recurringIncome: String(normalizedProfile.recurringIncome || ""),
+                    reserveAmount: String(normalizedProfile.reserveAmount || "")
+                });
+                setStatusMessage(`Painel sincronizando com Supabase para ${currentSession.user.email}.`);
             }
 
             setSyncMode("supabase");
@@ -249,7 +234,7 @@ export default function HomePage() {
 
             if (!supabase) {
                 loadLocalItems();
-                loadLocalIncomePlan();
+                loadLocalProfile();
                 setSyncMode("local");
                 setStatusMessage("Salvando apenas neste navegador.");
                 setHydrated(true);
@@ -267,7 +252,7 @@ export default function HomePage() {
                 await loadRemote(supabase, currentSession);
             } else {
                 setItems([]);
-                loadLocalIncomePlan();
+                loadLocalProfile();
                 setHydrated(true);
             }
 
@@ -278,7 +263,7 @@ export default function HomePage() {
                     await loadRemote(supabase, nextSession);
                 } else {
                     setItems([]);
-                    loadLocalIncomePlan();
+                    loadLocalProfile();
                     setHydrated(true);
                     setStatusMessage("Supabase configurado. Entre com seu usuario.");
                 }
@@ -314,27 +299,29 @@ export default function HomePage() {
             return;
         }
 
-        window.localStorage.setItem(incomeStorageKey, JSON.stringify(incomePlan));
-    }, [incomePlan, hydrated]);
+        window.localStorage.setItem(profileStorageKey, JSON.stringify(profile));
+    }, [profile, hydrated]);
 
-    const monthLabel = months.find((month) => month.key === selectedMonth)?.label ?? "Marco";
-    const visibleMonths = useMemo(() => buildVisibleMonths(currentMonthKey()), []);
+    const visibleMonths = useMemo(() => buildVisibleMonths(selectedMonth), [selectedMonth]);
+    const archiveMonths = useMemo(() => buildArchiveMonths(selectedMonth), [selectedMonth]);
+    const monthLabel = months.find((month) => month.key === selectedMonth)?.label ?? months[0].label;
 
     const monthMetrics = useMemo(() => {
+        const availableBase = profile.recurringIncome + profile.reserveAmount;
         return months.map((month) => {
             const expenses = items.reduce((total, item) => total + Number(item[month.key] ?? 0), 0);
-            const income = Number(incomePlan[month.key] ?? 0);
-            const balance = income - expenses;
-            const health = buildHealthStatus(income, expenses);
+            const available = availableBase;
+            const balance = available - expenses;
+            const health = buildHealthStatus(available, expenses);
             return {
                 ...month,
                 expenses,
-                income,
+                available,
                 balance,
                 health
             };
         });
-    }, [items, incomePlan]);
+    }, [items, profile]);
 
     const selectedMetrics = monthMetrics.find((month) => month.key === selectedMonth) ?? monthMetrics[0];
 
@@ -346,8 +333,8 @@ export default function HomePage() {
         setForm((current) => ({ ...current, [key]: value }));
     };
 
-    const onIncomeChange = (key, value) => {
-        setIncomeForm((current) => ({ ...current, [key]: value }));
+    const onProfileChange = (key, value) => {
+        setProfileForm((current) => ({ ...current, [key]: value }));
     };
 
     const persistItem = async (item) => {
@@ -363,7 +350,7 @@ export default function HomePage() {
         return !error;
     };
 
-    const persistIncomePlan = async (plan) => {
+    const persistProfile = async (nextProfile) => {
         const supabase = getSupabaseClient();
         if (!supabase || !session) {
             return true;
@@ -371,7 +358,7 @@ export default function HomePage() {
 
         const { error } = await supabase
             .from("financial_profiles")
-            .upsert(toIncomeProfileRow(plan, session.user.id), { onConflict: "user_id" });
+            .upsert(toProfileRow(nextProfile, session.user.id), { onConflict: "user_id" });
 
         return !error;
     };
@@ -425,28 +412,19 @@ export default function HomePage() {
         resetEditor();
     };
 
-    const saveIncomePlan = async () => {
-        const payload = buildIncomePlanPayload(incomeForm);
-        const persisted = await persistIncomePlan(payload);
+    const saveProfile = async () => {
+        const nextProfile = {
+            recurringIncome: parseCurrencyInput(profileForm.recurringIncome),
+            reserveAmount: parseCurrencyInput(profileForm.reserveAmount)
+        };
+        const persisted = await persistProfile(nextProfile);
 
         if (!persisted && syncMode === "supabase") {
-            window.alert("Nao foi possivel salvar os ganhos potenciais no Supabase.");
+            window.alert("Nao foi possivel salvar sua base financeira no Supabase.");
             return;
         }
 
-        setIncomePlan(payload);
-    };
-
-    const copyCurrentMonthForward = () => {
-        const currentIndex = months.findIndex((month) => month.key === selectedMonth);
-        const currentValue = incomeForm[selectedMonth];
-        setIncomeForm((current) => {
-            const next = { ...current };
-            for (let index = currentIndex; index < months.length; index += 1) {
-                next[months[index].key] = currentValue;
-            }
-            return next;
-        });
+        setProfile(nextProfile);
     };
 
     const startEditing = (item) => {
@@ -482,7 +460,7 @@ export default function HomePage() {
                     {
                         exportedAt: new Date().toISOString(),
                         syncMode,
-                        incomePlan,
+                        profile,
                         items
                     },
                     null,
@@ -510,21 +488,21 @@ export default function HomePage() {
             const text = await file.text();
             const parsed = JSON.parse(text);
             const incomingItems = (parsed.items ?? []).map(normalizeItem);
-            const incomingIncomePlan = normalizeIncomePlan(parsed.incomePlan ?? emptyIncomePlan);
+            const incomingProfile = normalizeProfile(parsed.profile ?? emptyProfile);
 
             if (syncMode === "supabase" && session) {
                 const supabase = getSupabaseClient();
-                const [itemsResult, incomeResult] = await Promise.all([
+                const [itemsResult, profileResult] = await Promise.all([
                     supabase
                         .from("planning_items")
                         .upsert(incomingItems.map((item) => toDatabaseRow(item, session.user.id)), { onConflict: "id" }),
                     supabase
                         .from("financial_profiles")
-                        .upsert(toIncomeProfileRow(incomingIncomePlan, session.user.id), { onConflict: "user_id" })
+                        .upsert(toProfileRow(incomingProfile, session.user.id), { onConflict: "user_id" })
                 ]);
 
-                if (itemsResult.error || incomeResult.error) {
-                    throw itemsResult.error || incomeResult.error;
+                if (itemsResult.error || profileResult.error) {
+                    throw itemsResult.error || profileResult.error;
                 }
             }
 
@@ -539,8 +517,11 @@ export default function HomePage() {
             }
 
             setItems(merged);
-            setIncomePlan(incomingIncomePlan);
-            setIncomeForm(incomePlanFormFromValues(incomingIncomePlan));
+            setProfile(incomingProfile);
+            setProfileForm({
+                recurringIncome: String(incomingProfile.recurringIncome || ""),
+                reserveAmount: String(incomingProfile.reserveAmount || "")
+            });
             window.alert("Backup restaurado.");
         } catch {
             window.alert("Nao foi possivel restaurar o backup.");
@@ -645,23 +626,23 @@ export default function HomePage() {
     }
 
     return (
-        <main className="page-shell">
-            <section className="hero-card">
+        <main className="page-shell dark-shell">
+            <section className="hero-card hero-dark">
                 <div className="hero-copy-block">
-                    <p className="eyebrow">Painel projetado</p>
-                    <h1>Seu saldo futuro agora parte dos ganhos potenciais de cada mes.</h1>
+                    <p className="eyebrow">Panorama financeiro</p>
+                    <h1>Seu ganho entra uma vez. O sistema projeta o resto dos meses sozinho.</h1>
                     <p className="hero-copy">
-                        Defina salario, alugueis e outras entradas como base. O sistema cruza isso com as faturas e te diz
-                        se o mes deve fechar no verde, amarelo ou vermelho.
+                        O calculo principal agora usa duas bases fixas: ganho recorrente e sobra acumulada. O painel cruza isso
+                        com as faturas e mostra onde o horizonte esta verde, amarelo ou vermelho.
                     </p>
                 </div>
                 <div className="hero-actions">
-                    <div className="sync-badge">
+                    <div className="sync-badge dark-badge">
                         <span>{syncMode === "supabase" ? "Supabase ativo" : "Modo local"}</span>
                         <strong>{statusMessage}</strong>
                         {session?.user?.email ? <small>{session.user.email}</small> : null}
                     </div>
-                    <div className="hero-metrics">
+                    <div className="hero-metrics dark-metrics">
                         <div>
                             <span>Mes foco</span>
                             <strong>{monthLabel}</strong>
@@ -672,8 +653,8 @@ export default function HomePage() {
                         </div>
                     </div>
                     <button className="primary-button" onClick={exportBackup}>Exportar backup</button>
-                    <button className="secondary-button" onClick={() => importRef.current?.click()}>Restaurar backup</button>
-                    {syncMode === "supabase" ? <button className="secondary-button" onClick={signOut}>Sair</button> : null}
+                    <button className="secondary-button dark-button" onClick={() => importRef.current?.click()}>Restaurar backup</button>
+                    {syncMode === "supabase" ? <button className="secondary-button dark-button" onClick={signOut}>Sair</button> : null}
                     <input ref={importRef} className="hidden-input" type="file" accept="application/json" onChange={importBackup} />
                 </div>
             </section>
@@ -693,7 +674,7 @@ export default function HomePage() {
                             </div>
                             <div className="status-chip">{metrics.health.label}</div>
                             <div className="forecast-values">
-                                <small>Ganhos {currency(metrics.income)}</small>
+                                <small>Disponivel {currency(metrics.available)}</small>
                                 <small>Faturas {currency(metrics.expenses)}</small>
                                 <strong>{currency(metrics.balance)}</strong>
                             </div>
@@ -708,61 +689,65 @@ export default function HomePage() {
                     <h2>{currency(selectedMetrics?.balance ?? 0)}</h2>
                     <span>{selectedMetrics?.health.description ?? "Sem leitura."}</span>
                 </article>
-                <article className="summary-card">
-                    <p>Ganhos potenciais</p>
-                    <h2>{currency(selectedMetrics?.income ?? 0)}</h2>
-                    <span>Base do calculo geral deste mes</span>
+                <article className="summary-card dark-card">
+                    <p>Ganho recorrente</p>
+                    <h2>{currency(profile.recurringIncome)}</h2>
+                    <span>Base fixa usada em todos os meses</span>
                 </article>
-                <article className="summary-card">
-                    <p>Faturas previstas</p>
-                    <h2>{currency(selectedMetrics?.expenses ?? 0)}</h2>
-                    <span>Soma das categorias planejadas</span>
+                <article className="summary-card dark-card">
+                    <p>Sobra acumulada</p>
+                    <h2>{currency(profile.reserveAmount)}</h2>
+                    <span>Reserva adicionada ao ganho base</span>
                 </article>
                 <article className={`summary-card status-card ${selectedMetrics?.health.tone ?? ""}`}>
                     <p>Panorama</p>
                     <h2>{selectedMetrics?.health.label ?? "Sem base"}</h2>
-                    <span>{selectedMetrics?.health.description ?? "Defina as entradas do mes."}</span>
+                    <span>{selectedMetrics?.health.description ?? "Defina a base mensal."}</span>
                 </article>
             </section>
 
             <section className="editor-grid three-columns">
-                <article className="panel income-panel">
+                <article className="panel income-panel dark-panel">
                     <div className="panel-header">
                         <div>
                             <p className="eyebrow">Base do calculo</p>
-                            <h3>Ganhos potenciais por mes</h3>
+                            <h3>Ganhos e reserva</h3>
                         </div>
-                        <button className="ghost-button" type="button" onClick={copyCurrentMonthForward}>
-                            Replicar mes foco para frente
-                        </button>
                     </div>
                     <div className="income-helper">
-                        Use estes campos para somar salario, alugueis, comissoes e outras entradas. O panorama acima usa
-                        esse card como base.
+                        Preencha uma vez seu ganho recorrente mensal. Se houver um valor sobrando em caixa, coloque em reserva
+                        e ele sera somado ao calculo do panorama.
                     </div>
-                    <div className="income-grid">
-                        {visibleMonths.map((month) => (
-                            <label key={month.key} className={month.key === selectedMonth ? "income-cell active" : "income-cell"}>
-                                <span>{month.label}</span>
-                                <input
-                                    value={incomeForm[month.key]}
-                                    onChange={(event) => onIncomeChange(month.key, event.target.value)}
-                                    placeholder="0,00"
-                                    inputMode="decimal"
-                                />
-                            </label>
-                        ))}
+                    <div className="static-income-grid">
+                        <label className="income-cell active">
+                            <span>Ganho recorrente</span>
+                            <input
+                                value={profileForm.recurringIncome}
+                                onChange={(event) => onProfileChange("recurringIncome", event.target.value)}
+                                placeholder="0,00"
+                                inputMode="decimal"
+                            />
+                        </label>
+                        <label className="income-cell">
+                            <span>Sobra acumulada</span>
+                            <input
+                                value={profileForm.reserveAmount}
+                                onChange={(event) => onProfileChange("reserveAmount", event.target.value)}
+                                placeholder="0,00"
+                                inputMode="decimal"
+                            />
+                        </label>
                     </div>
-                    <button className="primary-button" type="button" onClick={saveIncomePlan}>
-                        Salvar ganhos potenciais
+                    <button className="primary-button" type="button" onClick={saveProfile}>
+                        Salvar base financeira
                     </button>
                 </article>
 
-                <article className="panel chart-panel">
+                <article className="panel chart-panel dark-panel">
                     <div className="panel-header">
                         <div>
-                            <p className="eyebrow">Leitura sequencial</p>
-                            <h3>Panorama dos meses seguintes</h3>
+                            <p className="eyebrow">Horizonte principal</p>
+                            <h3>6 meses relevantes</h3>
                         </div>
                     </div>
                     <div className="bars">
@@ -770,7 +755,7 @@ export default function HomePage() {
                             const metrics = monthMetrics.find((entry) => entry.key === month.key);
                             const max = Math.max(...visibleMonths.map((entry) => {
                                 const current = monthMetrics.find((row) => row.key === entry.key);
-                                return Math.max(current.income, current.expenses, Math.abs(current.balance));
+                                return Math.max(current.available, current.expenses, Math.abs(current.balance));
                             }), 1);
                             return (
                                 <div key={month.key} className="bar-row">
@@ -779,11 +764,11 @@ export default function HomePage() {
                                         <span>{metrics.health.label}</span>
                                     </div>
                                     <div className="dual-bar-stack">
-                                        <div className="dual-bar-label">Entradas</div>
+                                        <div className="dual-bar-label">Disponivel</div>
                                         <div className="bar-track">
-                                            <div className="bar-fill success" style={{ width: `${Math.max(4, (metrics.income / max) * 100)}%` }} />
+                                            <div className="bar-fill success" style={{ width: `${Math.max(4, (metrics.available / max) * 100)}%` }} />
                                         </div>
-                                        <div className="dual-bar-label">Saidas</div>
+                                        <div className="dual-bar-label">Faturas</div>
                                         <div className="bar-track">
                                             <div className="bar-fill warning" style={{ width: `${Math.max(4, (metrics.expenses / max) * 100)}%` }} />
                                         </div>
@@ -794,14 +779,14 @@ export default function HomePage() {
                     </div>
                 </article>
 
-                <article className="panel editor-panel" ref={formRef}>
+                <article className="panel editor-panel dark-panel" ref={formRef}>
                     <div className="panel-header">
                         <div>
                             <p className="eyebrow">{editingId ? "Edicao" : "Novo cadastro"}</p>
                             <h3>{editingId ? "Editar categoria" : "Adicionar categoria"}</h3>
                         </div>
                         {editingId ? (
-                            <button className="ghost-button" type="button" onClick={resetEditor}>
+                            <button className="ghost-button dark-button" type="button" onClick={resetEditor}>
                                 Cancelar edicao
                             </button>
                         ) : null}
@@ -831,7 +816,7 @@ export default function HomePage() {
                 </article>
             </section>
 
-            <section className="panel accounts-panel">
+            <section className="panel accounts-panel dark-panel">
                 <div className="panel-header">
                     <div>
                         <p className="eyebrow">Categorias e faturas</p>
@@ -862,12 +847,38 @@ export default function HomePage() {
                                 ))}
                             </div>
                             <div className="row-actions">
-                                <button className="secondary-button slim-button" onClick={() => startEditing(item)}>Editar</button>
+                                <button className="secondary-button dark-button slim-button" onClick={() => startEditing(item)}>Editar</button>
                                 <button className="danger-button" onClick={() => removeItem(item.id)}>Excluir</button>
                             </div>
                         </article>
                     ))}
                 </div>
+            </section>
+
+            <section className="panel archive-panel dark-panel">
+                <button className="archive-toggle" onClick={() => setShowArchive((current) => !current)}>
+                    <span>Meses antigos ou fora do foco principal</span>
+                    <strong>{showArchive ? "Ocultar" : "Mostrar"}</strong>
+                </button>
+
+                {showArchive ? (
+                    <div className="archive-grid">
+                        {archiveMonths.map((month) => {
+                            const metrics = monthMetrics.find((entry) => entry.key === month.key);
+                            return (
+                                <div key={month.key} className={`archive-card ${metrics.health.tone}`}>
+                                    <div>
+                                        <span>{month.label}</span>
+                                        <strong>{metrics.health.label}</strong>
+                                    </div>
+                                    <small>Disponivel {currency(metrics.available)}</small>
+                                    <small>Faturas {currency(metrics.expenses)}</small>
+                                    <strong>{currency(metrics.balance)}</strong>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : null}
             </section>
         </main>
     );
