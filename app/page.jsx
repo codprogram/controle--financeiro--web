@@ -57,10 +57,19 @@ function fromDatabaseRow(row) {
     });
 }
 
+function formFromItem(item) {
+    return {
+        name: item.name ?? "",
+        notes: item.notes ?? "",
+        ...Object.fromEntries(months.map((month) => [month.key, String(item[month.key] ?? "")]))
+    };
+}
+
 export default function HomePage() {
     const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
     const [items, setItems] = useState([]);
     const [form, setForm] = useState(emptyForm);
+    const [editingId, setEditingId] = useState(null);
     const [hydrated, setHydrated] = useState(false);
     const [syncMode, setSyncMode] = useState("local");
     const [statusMessage, setStatusMessage] = useState("Carregando seus dados...");
@@ -70,6 +79,7 @@ export default function HomePage() {
     const [authMessage, setAuthMessage] = useState("");
     const [authLoading, setAuthLoading] = useState(false);
     const importRef = useRef(null);
+    const formRef = useRef(null);
 
     useEffect(() => {
         const loadLocal = () => {
@@ -197,12 +207,14 @@ export default function HomePage() {
             return total + months.reduce((monthTotal, month) => monthTotal + Number(item[month.key] ?? 0), 0);
         }, 0);
         const sorted = [...items].sort((left, right) => Number(right[selectedMonth] ?? 0) - Number(left[selectedMonth] ?? 0));
+        const aboveAverage = items.filter((item) => Number(item[selectedMonth] ?? 0) > selectedMonthTotal / Math.max(items.length, 1)).length;
         return {
             selectedMonthTotal,
             grandTotal,
             average: grandTotal / months.length,
             highestName: sorted[0]?.name ?? "Sem contas",
-            highestValue: Number(sorted[0]?.[selectedMonth] ?? 0)
+            highestValue: Number(sorted[0]?.[selectedMonth] ?? 0),
+            aboveAverage
         };
     }, [items, selectedMonth]);
 
@@ -244,6 +256,11 @@ export default function HomePage() {
         return !error;
     };
 
+    const resetEditor = () => {
+        setEditingId(null);
+        setForm(emptyForm);
+    };
+
     const onSubmit = async (event) => {
         event.preventDefault();
 
@@ -251,7 +268,17 @@ export default function HomePage() {
             return;
         }
 
-        const item = buildPayloadFromForm(form);
+        const base = buildPayloadFromForm(form);
+        const currentItem = items.find((item) => item.id === editingId);
+        const item = editingId && currentItem
+            ? {
+                ...base,
+                id: currentItem.id,
+                createdAt: currentItem.createdAt,
+                updatedAt: new Date().toISOString()
+            }
+            : base;
+
         const persisted = await persistItem(item);
 
         if (!persisted && syncMode === "supabase") {
@@ -259,8 +286,19 @@ export default function HomePage() {
             return;
         }
 
-        setItems((current) => [...current, item]);
-        setForm(emptyForm);
+        setItems((current) => (
+            editingId
+                ? current.map((existing) => existing.id === editingId ? item : existing)
+                : [...current, item]
+        ));
+
+        resetEditor();
+    };
+
+    const startEditing = (item) => {
+        setEditingId(item.id);
+        setForm(formFromItem(item));
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     };
 
     const removeItem = async (id) => {
@@ -277,6 +315,10 @@ export default function HomePage() {
         }
 
         setItems((current) => current.filter((item) => item.id !== id));
+
+        if (editingId === id) {
+            resetEditor();
+        }
     };
 
     const exportBackup = () => {
@@ -401,7 +443,7 @@ export default function HomePage() {
         return (
             <main className="page-shell auth-shell">
                 <section className="auth-card">
-                    <div>
+                    <div className="auth-copy">
                         <p className="eyebrow">Acesso privado</p>
                         <h1>Entre para carregar apenas os seus dados financeiros.</h1>
                         <p className="hero-copy">
@@ -409,7 +451,7 @@ export default function HomePage() {
                         </p>
                     </div>
 
-                    <form className="entry-form" onSubmit={submitAuth}>
+                    <form className="entry-form auth-form" onSubmit={submitAuth}>
                         <input
                             type="email"
                             placeholder="Seu email"
@@ -442,12 +484,12 @@ export default function HomePage() {
     return (
         <main className="page-shell">
             <section className="hero-card">
-                <div>
+                <div className="hero-copy-block">
                     <p className="eyebrow">Controle financeiro pessoal</p>
-                    <h1>Uma versao web para usar no Mac e no iPhone sem depender do ecossistema nativo.</h1>
+                    <h1>Planejamento mensal com cara de painel executivo e operacao simples no dia a dia.</h1>
                     <p className="hero-copy">
-                        A base segue sua planilha: contas nas linhas, meses nas colunas, totais mensais, backup em JSON
-                        e acesso simples pelo navegador.
+                        A estrutura segue a sua planilha, mas com sincronizacao web, backup e leitura mais clara para
+                        decidir rapido onde o mes esta pesando.
                     </p>
                 </div>
                 <div className="hero-actions">
@@ -455,6 +497,16 @@ export default function HomePage() {
                         <span>{syncMode === "supabase" ? "Supabase ativo" : "Modo local"}</span>
                         <strong>{statusMessage}</strong>
                         {session?.user?.email ? <small>{session.user.email}</small> : null}
+                    </div>
+                    <div className="hero-metrics">
+                        <div>
+                            <span>Mes selecionado</span>
+                            <strong>{monthLabel}</strong>
+                        </div>
+                        <div>
+                            <span>Contas acima da media</span>
+                            <strong>{summary.aboveAverage}</strong>
+                        </div>
                     </div>
                     <button className="primary-button" onClick={exportBackup}>Exportar backup</button>
                     <button className="secondary-button" onClick={() => importRef.current?.click()}>Restaurar backup</button>
@@ -480,7 +532,7 @@ export default function HomePage() {
                 <article className="summary-card focus-card">
                     <p>Total de {monthLabel}</p>
                     <h2>{currency(summary.selectedMonthTotal)}</h2>
-                    <span>Planejamento atual do mes selecionado</span>
+                    <span>Panorama principal do periodo escolhido</span>
                 </article>
                 <article className="summary-card">
                     <p>Total geral</p>
@@ -490,7 +542,7 @@ export default function HomePage() {
                 <article className="summary-card">
                     <p>Media mensal</p>
                     <h2>{currency(summary.average)}</h2>
-                    <span>Leitura media da planilha inteira</span>
+                    <span>Leitura media da base inteira</span>
                 </article>
                 <article className="summary-card">
                     <p>Maior peso no mes</p>
@@ -499,8 +551,8 @@ export default function HomePage() {
                 </article>
             </section>
 
-            <section className="content-grid">
-                <article className="panel">
+            <section className="editor-grid">
+                <article className="panel chart-panel">
                     <div className="panel-header">
                         <div>
                             <p className="eyebrow">Comparativo</p>
@@ -526,16 +578,23 @@ export default function HomePage() {
                     </div>
                 </article>
 
-                <article className="panel">
+                <article className="panel editor-panel" ref={formRef}>
                     <div className="panel-header">
                         <div>
-                            <p className="eyebrow">Novo cadastro</p>
-                            <h3>Adicionar conta</h3>
+                            <p className="eyebrow">{editingId ? "Edicao" : "Novo cadastro"}</p>
+                            <h3>{editingId ? "Editar conta" : "Adicionar conta"}</h3>
                         </div>
+                        {editingId ? (
+                            <button className="ghost-button" type="button" onClick={resetEditor}>
+                                Cancelar edicao
+                            </button>
+                        ) : null}
                     </div>
                     <form className="entry-form" onSubmit={onSubmit}>
-                        <input value={form.name} onChange={(event) => onChange("name", event.target.value)} placeholder="Nome da conta" />
-                        <textarea value={form.notes} onChange={(event) => onChange("notes", event.target.value)} placeholder="Observacoes" rows={3} />
+                        <div className="form-lead">
+                            <input value={form.name} onChange={(event) => onChange("name", event.target.value)} placeholder="Nome da conta" />
+                            <textarea value={form.notes} onChange={(event) => onChange("notes", event.target.value)} placeholder="Observacoes" rows={3} />
+                        </div>
                         <div className="month-input-grid">
                             {months.map((month) => (
                                 <label key={month.key}>
@@ -549,12 +608,14 @@ export default function HomePage() {
                                 </label>
                             ))}
                         </div>
-                        <button className="primary-button" type="submit">Salvar conta</button>
+                        <button className="primary-button" type="submit">
+                            {editingId ? "Salvar alteracoes" : "Salvar conta"}
+                        </button>
                     </form>
                 </article>
             </section>
 
-            <section className="panel">
+            <section className="panel accounts-panel">
                 <div className="panel-header">
                     <div>
                         <p className="eyebrow">Leitura mensal</p>
@@ -565,7 +626,7 @@ export default function HomePage() {
 
                 <div className="table-list">
                     {rankedItems.map((item) => (
-                        <article key={item.id} className="table-row">
+                        <article key={item.id} className={editingId === item.id ? "table-row editing" : "table-row"}>
                             <div className="row-main">
                                 <div>
                                     <strong>{item.name}</strong>
@@ -585,6 +646,7 @@ export default function HomePage() {
                                 ))}
                             </div>
                             <div className="row-actions">
+                                <button className="secondary-button slim-button" onClick={() => startEditing(item)}>Editar</button>
                                 <button className="danger-button" onClick={() => removeItem(item.id)}>Excluir</button>
                             </div>
                         </article>
