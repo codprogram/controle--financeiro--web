@@ -305,9 +305,13 @@ export default function HomePage() {
     const visibleMonths = useMemo(() => buildVisibleMonths(selectedMonth), [selectedMonth]);
     const archiveMonths = useMemo(() => buildArchiveMonths(selectedMonth), [selectedMonth]);
     const monthLabel = months.find((month) => month.key === selectedMonth)?.label ?? months[0].label;
+    const effectiveProfile = useMemo(() => ({
+        recurringIncome: parseCurrencyInput(profileForm.recurringIncome),
+        reserveAmount: parseCurrencyInput(profileForm.reserveAmount)
+    }), [profileForm]);
 
     const monthMetrics = useMemo(() => {
-        const availableBase = profile.recurringIncome + profile.reserveAmount;
+        const availableBase = effectiveProfile.recurringIncome + effectiveProfile.reserveAmount;
         return months.map((month) => {
             const expenses = items.reduce((total, item) => total + Number(item[month.key] ?? 0), 0);
             const available = availableBase;
@@ -321,7 +325,7 @@ export default function HomePage() {
                 health
             };
         });
-    }, [items, profile]);
+    }, [effectiveProfile, items]);
 
     const selectedMetrics = monthMetrics.find((month) => month.key === selectedMonth) ?? monthMetrics[0];
 
@@ -691,12 +695,12 @@ export default function HomePage() {
                 </article>
                 <article className="summary-card dark-card">
                     <p>Ganho recorrente</p>
-                    <h2>{currency(profile.recurringIncome)}</h2>
+                    <h2>{currency(effectiveProfile.recurringIncome)}</h2>
                     <span>Base fixa usada em todos os meses</span>
                 </article>
                 <article className="summary-card dark-card">
                     <p>Sobra acumulada</p>
-                    <h2>{currency(profile.reserveAmount)}</h2>
+                    <h2>{currency(effectiveProfile.reserveAmount)}</h2>
                     <span>Reserva adicionada ao ganho base</span>
                 </article>
                 <article className={`summary-card status-card ${selectedMetrics?.health.tone ?? ""}`}>
