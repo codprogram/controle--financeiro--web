@@ -132,6 +132,7 @@ function buildHealthStatus(available, expenses) {
 }
 
 export default function HomePage() {
+    const [mounted, setMounted] = useState(false);
     const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
     const [items, setItems] = useState([]);
     const [profile, setProfile] = useState(emptyProfile);
@@ -152,6 +153,10 @@ export default function HomePage() {
     const [authLoading, setAuthLoading] = useState(false);
     const importRef = useRef(null);
     const formRef = useRef(null);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     useEffect(() => {
         const loadLocalItems = () => {
@@ -586,6 +591,19 @@ export default function HomePage() {
         setAuthMessage("");
         setAuthForm({ email: "", password: "" });
     };
+
+    if (!mounted) {
+        return (
+            <main className="page-shell dark-shell">
+                <section className="hero-card hero-dark">
+                    <div className="hero-copy-block">
+                        <p className="eyebrow">Carregando</p>
+                        <h1>Seu painel financeiro está sendo preparado.</h1>
+                    </div>
+                </section>
+            </main>
+        );
+    }
 
     if (isSupabaseConfigured() && hydrated && !session) {
         return (
