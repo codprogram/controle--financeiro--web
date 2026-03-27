@@ -592,11 +592,8 @@ export default function HomePage() {
             <main className="page-shell auth-shell">
                 <section className="auth-card">
                     <div className="auth-copy">
-                        <p className="eyebrow">Acesso privado</p>
-                        <h1>Entre para carregar apenas os seus dados financeiros.</h1>
-                        <p className="hero-copy">
-                            Esta versao usa Supabase com regras por usuario. Cada conta e cada panorama ficam isolados pelo seu login.
-                        </p>
+                        <p className="eyebrow">Acesso</p>
+                        <h1>Entre na sua base financeira.</h1>
                     </div>
 
                     <form className="entry-form auth-form" onSubmit={submitAuth}>
@@ -633,12 +630,8 @@ export default function HomePage() {
         <main className="page-shell dark-shell">
             <section className="hero-card hero-dark">
                 <div className="hero-copy-block">
-                    <p className="eyebrow">Panorama financeiro</p>
-                    <h1>Seu ganho entra uma vez. O sistema projeta o resto dos meses sozinho.</h1>
-                    <p className="hero-copy">
-                        O calculo principal agora usa duas bases fixas: ganho recorrente e sobra acumulada. O painel cruza isso
-                        com as faturas e mostra onde o horizonte esta verde, amarelo ou vermelho.
-                    </p>
+                    <p className="eyebrow">Panorama</p>
+                    <h1>Seu fluxo financeiro, mês a mês.</h1>
                 </div>
                 <div className="hero-actions">
                     <div className="sync-badge dark-badge">
@@ -648,7 +641,7 @@ export default function HomePage() {
                     </div>
                     <div className="hero-metrics dark-metrics">
                         <div>
-                            <span>Mes foco</span>
+                            <span>Mês foco</span>
                             <strong>{monthLabel}</strong>
                         </div>
                         <div>
@@ -691,22 +684,22 @@ export default function HomePage() {
                 <article className="summary-card focus-card">
                     <p>Saldo projetado de {monthLabel}</p>
                     <h2>{currency(selectedMetrics?.balance ?? 0)}</h2>
-                    <span>{selectedMetrics?.health.description ?? "Sem leitura."}</span>
+                    <span>{selectedMetrics?.health.label ?? "Sem leitura"}</span>
                 </article>
                 <article className="summary-card dark-card">
                     <p>Ganho recorrente</p>
                     <h2>{currency(effectiveProfile.recurringIncome)}</h2>
-                    <span>Base fixa usada em todos os meses</span>
+                    <span>Base mensal</span>
                 </article>
                 <article className="summary-card dark-card">
                     <p>Sobra acumulada</p>
                     <h2>{currency(effectiveProfile.reserveAmount)}</h2>
-                    <span>Reserva adicionada ao ganho base</span>
+                    <span>Reserva atual</span>
                 </article>
                 <article className={`summary-card status-card ${selectedMetrics?.health.tone ?? ""}`}>
                     <p>Panorama</p>
                     <h2>{selectedMetrics?.health.label ?? "Sem base"}</h2>
-                    <span>{selectedMetrics?.health.description ?? "Defina a base mensal."}</span>
+                    <span>{currency(selectedMetrics?.expenses ?? 0)} em faturas</span>
                 </article>
             </section>
 
@@ -714,13 +707,9 @@ export default function HomePage() {
                 <article className="panel income-panel dark-panel">
                     <div className="panel-header">
                         <div>
-                            <p className="eyebrow">Base do calculo</p>
+                            <p className="eyebrow">Base</p>
                             <h3>Ganhos e reserva</h3>
                         </div>
-                    </div>
-                    <div className="income-helper">
-                        Preencha uma vez seu ganho recorrente mensal. Se houver um valor sobrando em caixa, coloque em reserva
-                        e ele sera somado ao calculo do panorama.
                     </div>
                     <div className="static-income-grid">
                         <label className="income-cell active">
@@ -750,7 +739,7 @@ export default function HomePage() {
                 <article className="panel chart-panel dark-panel">
                     <div className="panel-header">
                         <div>
-                            <p className="eyebrow">Horizonte principal</p>
+                            <p className="eyebrow">Horizonte</p>
                             <h3>6 meses relevantes</h3>
                         </div>
                     </div>
@@ -786,7 +775,7 @@ export default function HomePage() {
                 <article className="panel editor-panel dark-panel" ref={formRef}>
                     <div className="panel-header">
                         <div>
-                            <p className="eyebrow">{editingId ? "Edicao" : "Novo cadastro"}</p>
+                            <p className="eyebrow">{editingId ? "Edição" : "Cadastro"}</p>
                             <h3>{editingId ? "Editar categoria" : "Adicionar categoria"}</h3>
                         </div>
                         {editingId ? (
@@ -798,7 +787,7 @@ export default function HomePage() {
                     <form className="entry-form" onSubmit={onSubmit}>
                         <div className="form-lead">
                             <input value={form.name} onChange={(event) => onChange("name", event.target.value)} placeholder="Nome da categoria ou fatura" />
-                            <textarea value={form.notes} onChange={(event) => onChange("notes", event.target.value)} placeholder="Observacoes" rows={3} />
+                            <textarea value={form.notes} onChange={(event) => onChange("notes", event.target.value)} placeholder="Observações" rows={3} />
                         </div>
                         <div className="month-input-grid">
                             {months.map((month) => (
@@ -823,10 +812,10 @@ export default function HomePage() {
             <section className="panel accounts-panel dark-panel">
                 <div className="panel-header">
                     <div>
-                        <p className="eyebrow">Categorias e faturas</p>
+                        <p className="eyebrow">Categorias</p>
                         <h3>Valores por mes em {monthLabel}</h3>
                     </div>
-                    <span className="panel-count">{rankedItems.length} categorias</span>
+                    <span className="panel-count">{rankedItems.length}</span>
                 </div>
 
                 <div className="table-list">
@@ -861,7 +850,7 @@ export default function HomePage() {
 
             <section className="panel archive-panel dark-panel">
                 <button className="archive-toggle" onClick={() => setShowArchive((current) => !current)}>
-                    <span>Meses antigos ou fora do foco principal</span>
+                    <span>Meses fora do foco</span>
                     <strong>{showArchive ? "Ocultar" : "Mostrar"}</strong>
                 </button>
 

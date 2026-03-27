@@ -109,10 +109,10 @@ h3 {
 
 .hero-copy {
     max-width: 62ch;
-    margin: 18px 0 0;
+    margin: 10px 0 0;
     color: var(--muted);
-    font-size: 1.02rem;
-    line-height: 1.75;
+    font-size: 0.95rem;
+    line-height: 1.55;
 }
 
 .hero-actions {
@@ -240,8 +240,8 @@ h3 {
 
 .forecast-card {
     display: grid;
-    gap: 12px;
-    padding: 18px;
+    gap: 10px;
+    padding: 16px;
     text-align: left;
     background: var(--surface-alt);
 }
@@ -318,7 +318,7 @@ h3 {
 }
 
 .summary-card {
-    padding: 24px;
+    padding: 20px;
 }
 
 .summary-card h2 {
@@ -363,7 +363,7 @@ h3 {
 }
 
 .panel {
-    padding: 24px;
+    padding: 20px;
 }
 
 .dark-panel {
@@ -388,13 +388,8 @@ h3 {
     gap: 14px;
 }
 
-.income-helper {
-    margin-bottom: 16px;
-    line-height: 1.6;
-}
-
 .static-income-grid {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
 .income-cell,
@@ -496,7 +491,7 @@ h3 {
 }
 
 .table-row {
-    padding: 18px;
+    padding: 16px;
     border-radius: 24px;
     border: 1px solid var(--line);
 }
@@ -632,7 +627,7 @@ h3 {
     .panel,
     .summary-card,
     .auth-card {
-        padding: 20px;
+        padding: 18px;
     }
 
     .hero-metrics,
