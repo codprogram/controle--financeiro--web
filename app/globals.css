@@ -2,7 +2,6 @@
     --bg: #f6f0e7;
     --surface: rgba(255, 252, 247, 0.82);
     --surface-strong: #fffdfa;
-    --surface-deep: #f0e7db;
     --text: #1e2330;
     --muted: #646a78;
     --line: rgba(30, 35, 48, 0.08);
@@ -10,7 +9,11 @@
     --accent-strong: #115e59;
     --accent-soft: rgba(15, 118, 110, 0.12);
     --warm: #c77d32;
-    --danger: #b45309;
+    --warm-soft: rgba(199, 125, 50, 0.12);
+    --danger: #b42318;
+    --danger-soft: rgba(180, 35, 24, 0.12);
+    --success: #15803d;
+    --success-soft: rgba(21, 128, 61, 0.12);
     --shadow: 0 24px 60px rgba(45, 43, 50, 0.08);
     --display-font: var(--font-display);
     --body-font: var(--font-body);
@@ -41,7 +44,7 @@ textarea {
 }
 
 .page-shell {
-    width: min(1380px, calc(100% - 34px));
+    width: min(1440px, calc(100% - 34px));
     margin: 0 auto;
     padding: 28px 0 60px;
 }
@@ -49,7 +52,8 @@ textarea {
 .hero-card,
 .panel,
 .summary-card,
-.auth-card {
+.auth-card,
+.forecast-card {
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 30px;
@@ -59,7 +63,7 @@ textarea {
 
 .hero-card {
     display: grid;
-    grid-template-columns: 1.2fr 0.8fr;
+    grid-template-columns: 1.15fr 0.85fr;
     gap: 28px;
     padding: 30px;
 }
@@ -94,7 +98,7 @@ h3 {
 }
 
 .hero-copy {
-    max-width: 58ch;
+    max-width: 60ch;
     margin: 18px 0 0;
     color: var(--muted);
     font-size: 1.02rem;
@@ -111,7 +115,8 @@ h3 {
 .hero-metrics,
 .month-pill,
 .table-row,
-.mini-cell {
+.mini-cell,
+.income-cell {
     background: rgba(255, 255, 255, 0.68);
 }
 
@@ -163,17 +168,17 @@ h3 {
 .secondary-button,
 .danger-button,
 .ghost-button,
-.month-pill {
+.forecast-card {
     cursor: pointer;
     border: 0;
-    transition: transform 180ms ease, opacity 180ms ease, background 180ms ease;
+    transition: transform 180ms ease, opacity 180ms ease, background 180ms ease, border-color 180ms ease;
 }
 
 .primary-button:hover,
 .secondary-button:hover,
 .danger-button:hover,
 .ghost-button:hover,
-.month-pill:hover {
+.forecast-card:hover {
     transform: translateY(-1px);
 }
 
@@ -193,7 +198,8 @@ h3 {
     background: var(--surface-strong);
 }
 
-.ghost-button {
+.ghost-button,
+.slim-button {
     padding: 10px 14px;
 }
 
@@ -204,47 +210,73 @@ h3 {
     border-radius: 14px;
 }
 
-.slim-button {
-    padding: 10px 14px;
-}
-
 .hidden-input {
     display: none;
 }
 
-.month-strip {
+.forecast-strip {
     display: grid;
-    grid-template-columns: repeat(11, minmax(96px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 12px;
     margin-top: 22px;
 }
 
-.month-pill {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-    padding: 16px;
-    border-radius: 22px;
-    border: 1px solid var(--line);
+.forecast-card {
+    display: grid;
+    gap: 12px;
+    padding: 18px;
+    text-align: left;
 }
 
-.month-pill span {
+.forecast-card.active {
+    border-color: rgba(15, 118, 110, 0.4);
+    box-shadow: 0 16px 36px rgba(15, 118, 110, 0.12);
+}
+
+.forecast-card.success {
+    background: linear-gradient(180deg, rgba(21, 128, 61, 0.06), rgba(255, 255, 255, 0.78));
+}
+
+.forecast-card.warning {
+    background: linear-gradient(180deg, rgba(199, 125, 50, 0.08), rgba(255, 255, 255, 0.78));
+}
+
+.forecast-card.danger {
+    background: linear-gradient(180deg, rgba(180, 35, 24, 0.08), rgba(255, 255, 255, 0.78));
+}
+
+.forecast-header {
+    display: grid;
+    gap: 4px;
+}
+
+.forecast-header span {
+    color: var(--muted);
     font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+
+.status-chip {
+    justify-self: start;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.forecast-values {
+    display: grid;
+    gap: 6px;
+}
+
+.forecast-values small {
     color: var(--muted);
 }
 
-.month-pill strong {
-    font-size: 0.96rem;
-}
-
-.month-pill.active {
-    background: linear-gradient(135deg, #0f766e, #134e4a);
-    color: white;
-}
-
-.month-pill.active span {
-    color: rgba(255, 255, 255, 0.8);
+.forecast-values strong {
+    font-size: 1.15rem;
 }
 
 .summary-grid {
@@ -279,11 +311,26 @@ h3 {
     color: rgba(255, 255, 255, 0.82);
 }
 
+.status-card.success {
+    background: linear-gradient(180deg, rgba(21, 128, 61, 0.12), rgba(255, 255, 255, 0.82));
+}
+
+.status-card.warning {
+    background: linear-gradient(180deg, rgba(199, 125, 50, 0.12), rgba(255, 255, 255, 0.82));
+}
+
+.status-card.danger {
+    background: linear-gradient(180deg, rgba(180, 35, 24, 0.12), rgba(255, 255, 255, 0.82));
+}
+
 .editor-grid {
     display: grid;
-    grid-template-columns: 0.95fr 1.05fr;
     gap: 16px;
     margin-top: 22px;
+}
+
+.editor-grid.three-columns {
+    grid-template-columns: 0.9fr 0.9fr 1.2fr;
 }
 
 .panel {
@@ -303,20 +350,75 @@ h3 {
     font-size: 0.94rem;
 }
 
+.income-helper {
+    margin-bottom: 16px;
+    color: var(--muted);
+    line-height: 1.6;
+}
+
+.income-grid {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.income-cell {
+    display: grid;
+    gap: 6px;
+    padding: 14px;
+    border-radius: 18px;
+    border: 1px solid var(--line);
+}
+
+.income-cell.active {
+    border-color: rgba(15, 118, 110, 0.26);
+    background: var(--accent-soft);
+}
+
+.income-cell span {
+    color: var(--muted);
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.income-cell input {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--surface-strong);
+}
+
 .bars {
     display: grid;
     gap: 14px;
+}
+
+.bar-row {
+    display: grid;
+    gap: 10px;
 }
 
 .bar-copy {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 8px;
 }
 
 .bar-copy span {
     color: var(--muted);
+}
+
+.dual-bar-stack {
+    display: grid;
+    gap: 8px;
+}
+
+.dual-bar-label {
+    color: var(--muted);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
 }
 
 .bar-track {
@@ -332,8 +434,12 @@ h3 {
     background: linear-gradient(135deg, rgba(15, 118, 110, 0.56), rgba(20, 184, 166, 0.78));
 }
 
-.bar-fill.active {
-    background: linear-gradient(135deg, #0f766e, #14b8a6);
+.bar-fill.success {
+    background: linear-gradient(135deg, #15803d, #22c55e);
+}
+
+.bar-fill.warning {
+    background: linear-gradient(135deg, #c77d32, #f59e0b);
 }
 
 .entry-form {
@@ -478,25 +584,35 @@ h3 {
     min-height: 1.5em;
 }
 
+@media (max-width: 1240px) {
+    .summary-grid,
+    .editor-grid.three-columns {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .editor-panel {
+        grid-column: 1 / -1;
+    }
+}
+
 @media (max-width: 1120px) {
     .hero-card,
     .auth-card,
     .summary-grid,
-    .editor-grid,
     .form-lead {
         grid-template-columns: 1fr;
     }
 
-    .month-strip,
+    .forecast-strip,
     .row-months {
         overflow-x: auto;
         display: flex;
         padding-bottom: 6px;
     }
 
-    .month-pill,
+    .forecast-card,
     .mini-cell {
-        min-width: 100px;
+        min-width: 220px;
     }
 
     .month-input-grid {
@@ -513,7 +629,8 @@ h3 {
     .hero-card,
     .panel,
     .summary-card,
-    .auth-card {
+    .auth-card,
+    .forecast-card {
         border-radius: 22px;
     }
 

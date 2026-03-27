@@ -31,6 +31,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 2. Abra o SQL Editor
 3. Rode o conteudo de `supabase-schema.sql`
 4. Rode o conteudo de `supabase-auth.sql`
+5. Rode o conteudo de `supabase-income-plan.sql`
 
 ## Deploy na Vercel
 

@@ -2,17 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+    buildIncomePlanPayload,
     buildPayloadFromForm,
     currency,
     currentMonthKey,
     emptyForm,
+    emptyIncomePlan,
+    incomePlanFormFromValues,
+    normalizeIncomePlan,
     normalizeItem,
     seedItems
 } from "../lib/finance";
 import { months } from "../lib/months";
 import { getSupabaseClient, isSupabaseConfigured } from "../lib/supabase";
 
-const storageKey = "controle-financeiro-marcos-filho-v1";
+const itemsStorageKey = "controle-financeiro-marcos-filho-v1";
+const incomeStorageKey = "controle-financeiro-income-plan-v1";
 
 function toDatabaseRow(item, userId) {
     return {
@@ -57,6 +62,28 @@ function fromDatabaseRow(row) {
     });
 }
 
+function toIncomeProfileRow(plan, userId) {
+    return {
+        user_id: userId,
+        setembro: plan.setembro,
+        outubro: plan.outubro,
+        novembro: plan.novembro,
+        dezembro: plan.dezembro,
+        janeiro: plan.janeiro,
+        fevereiro: plan.fevereiro,
+        marco: plan.marco,
+        abril: plan.abril,
+        maio: plan.maio,
+        junho: plan.junho,
+        julho: plan.julho,
+        updated_at: new Date().toISOString()
+    };
+}
+
+function fromIncomeProfileRow(row) {
+    return normalizeIncomePlan(row);
+}
+
 function formFromItem(item) {
     return {
         name: item.name ?? "",
@@ -65,9 +92,47 @@ function formFromItem(item) {
     };
 }
 
+function buildVisibleMonths(currentMonth) {
+    const currentIndex = months.findIndex((month) => month.key === currentMonth);
+    const start = currentIndex <= 0 ? months.length - 1 : currentIndex - 1;
+    return Array.from({ length: 7 }, (_, index) => months[(start + index) % months.length]);
+}
+
+function buildHealthStatus(income, expenses) {
+    const balance = income - expenses;
+    if (income <= 0) {
+        return {
+            tone: "warning",
+            label: "Sem base",
+            description: "Defina seus ganhos potenciais para ler o risco do mes."
+        };
+    }
+    if (balance < 0) {
+        return {
+            tone: "danger",
+            label: "Vermelho",
+            description: "As despesas previstas passam da sua entrada potencial."
+        };
+    }
+    if (balance <= income * 0.15) {
+        return {
+            tone: "warning",
+            label: "Amarelo",
+            description: "O mes segue positivo, mas com folga curta."
+        };
+    }
+    return {
+        tone: "success",
+        label: "Verde",
+        description: "Sua folga projetada esta saudavel neste periodo."
+    };
+}
+
 export default function HomePage() {
     const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
     const [items, setItems] = useState([]);
+    const [incomePlan, setIncomePlan] = useState(normalizeIncomePlan(emptyIncomePlan));
+    const [incomeForm, setIncomeForm] = useState(incomePlanFormFromValues(emptyIncomePlan));
     const [form, setForm] = useState(emptyForm);
     const [editingId, setEditingId] = useState(null);
     const [hydrated, setHydrated] = useState(false);
@@ -82,13 +147,10 @@ export default function HomePage() {
     const formRef = useRef(null);
 
     useEffect(() => {
-        const loadLocal = () => {
-            const raw = window.localStorage.getItem(storageKey);
+        const loadLocalItems = () => {
+            const raw = window.localStorage.getItem(itemsStorageKey);
             if (!raw) {
                 setItems(seedItems.map(normalizeItem));
-                setSyncMode("local");
-                setStatusMessage("Salvando apenas neste navegador.");
-                setHydrated(true);
                 return;
             }
 
@@ -98,45 +160,87 @@ export default function HomePage() {
             } catch {
                 setItems(seedItems.map(normalizeItem));
             }
+        };
 
-            setSyncMode("local");
-            setStatusMessage("Salvando apenas neste navegador.");
-            setHydrated(true);
+        const loadLocalIncomePlan = () => {
+            const raw = window.localStorage.getItem(incomeStorageKey);
+            if (!raw) {
+                const normalized = normalizeIncomePlan(emptyIncomePlan);
+                setIncomePlan(normalized);
+                setIncomeForm(incomePlanFormFromValues(normalized));
+                return;
+            }
+
+            try {
+                const parsed = JSON.parse(raw);
+                const normalized = normalizeIncomePlan(parsed);
+                setIncomePlan(normalized);
+                setIncomeForm(incomePlanFormFromValues(normalized));
+            } catch {
+                const normalized = normalizeIncomePlan(emptyIncomePlan);
+                setIncomePlan(normalized);
+                setIncomeForm(incomePlanFormFromValues(normalized));
+            }
         };
 
         const loadRemote = async (supabase, currentSession) => {
-            const { data, error } = await supabase
-                .from("planning_items")
-                .select("*")
-                .order("name", { ascending: true });
+            const [{ data: itemData, error: itemError }, incomeResult] = await Promise.all([
+                supabase.from("planning_items").select("*").order("name", { ascending: true }),
+                supabase.from("financial_profiles").select("*").eq("user_id", currentSession.user.id).maybeSingle()
+            ]);
 
-            if (error) {
-                setStatusMessage("Falha ao carregar os dados do Supabase.");
+            if (itemError) {
+                setStatusMessage("Falha ao carregar as categorias no Supabase.");
                 setItems([]);
+                loadLocalIncomePlan();
                 setHydrated(true);
                 return;
             }
 
-            if (data.length === 0) {
+            if (itemData.length === 0) {
                 const seeded = seedItems.map(normalizeItem);
                 const insertResult = await supabase
                     .from("planning_items")
                     .insert(seeded.map((item) => toDatabaseRow(item, currentSession.user.id)));
 
                 if (insertResult.error) {
-                    setStatusMessage("Conta autenticada, mas sem permissao para semear dados.");
+                    setStatusMessage("Conta autenticada, mas sem permissao para semear categorias.");
                     setItems([]);
+                    loadLocalIncomePlan();
                     setHydrated(true);
                     return;
                 }
 
                 setItems(seeded);
             } else {
-                setItems(data.map(fromDatabaseRow));
+                setItems(itemData.map(fromDatabaseRow));
+            }
+
+            if (incomeResult.error) {
+                loadLocalIncomePlan();
+                setStatusMessage(`Categorias sincronizadas. Ganhos potenciais em modo local ate rodar a migracao.`);
+            } else if (!incomeResult.data) {
+                const zeroPlan = normalizeIncomePlan(emptyIncomePlan);
+                const upsertResult = await supabase
+                    .from("financial_profiles")
+                    .upsert(toIncomeProfileRow(zeroPlan, currentSession.user.id), { onConflict: "user_id" });
+
+                if (upsertResult.error) {
+                    loadLocalIncomePlan();
+                    setStatusMessage(`Categorias sincronizadas. Ganhos potenciais em modo local ate rodar a migracao.`);
+                } else {
+                    setIncomePlan(zeroPlan);
+                    setIncomeForm(incomePlanFormFromValues(zeroPlan));
+                    setStatusMessage(`Panorama completo sincronizando com Supabase para ${currentSession.user.email}.`);
+                }
+            } else {
+                const normalizedIncomePlan = fromIncomeProfileRow(incomeResult.data);
+                setIncomePlan(normalizedIncomePlan);
+                setIncomeForm(incomePlanFormFromValues(normalizedIncomePlan));
+                setStatusMessage(`Panorama completo sincronizando com Supabase para ${currentSession.user.email}.`);
             }
 
             setSyncMode("supabase");
-            setStatusMessage(`Sincronizando com Supabase para ${currentSession.user.email}.`);
             setHydrated(true);
         };
 
@@ -144,7 +248,11 @@ export default function HomePage() {
             const supabase = getSupabaseClient();
 
             if (!supabase) {
-                loadLocal();
+                loadLocalItems();
+                loadLocalIncomePlan();
+                setSyncMode("local");
+                setStatusMessage("Salvando apenas neste navegador.");
+                setHydrated(true);
                 return;
             }
 
@@ -159,6 +267,7 @@ export default function HomePage() {
                 await loadRemote(supabase, currentSession);
             } else {
                 setItems([]);
+                loadLocalIncomePlan();
                 setHydrated(true);
             }
 
@@ -169,6 +278,7 @@ export default function HomePage() {
                     await loadRemote(supabase, nextSession);
                 } else {
                     setItems([]);
+                    loadLocalIncomePlan();
                     setHydrated(true);
                     setStatusMessage("Supabase configurado. Entre com seu usuario.");
                 }
@@ -191,7 +301,7 @@ export default function HomePage() {
         }
 
         window.localStorage.setItem(
-            storageKey,
+            itemsStorageKey,
             JSON.stringify({
                 updatedAt: new Date().toISOString(),
                 items
@@ -199,31 +309,34 @@ export default function HomePage() {
         );
     }, [items, hydrated, syncMode]);
 
+    useEffect(() => {
+        if (!hydrated) {
+            return;
+        }
+
+        window.localStorage.setItem(incomeStorageKey, JSON.stringify(incomePlan));
+    }, [incomePlan, hydrated]);
+
     const monthLabel = months.find((month) => month.key === selectedMonth)?.label ?? "Marco";
+    const visibleMonths = useMemo(() => buildVisibleMonths(currentMonthKey()), []);
 
-    const summary = useMemo(() => {
-        const selectedMonthTotal = items.reduce((total, item) => total + Number(item[selectedMonth] ?? 0), 0);
-        const grandTotal = items.reduce((total, item) => {
-            return total + months.reduce((monthTotal, month) => monthTotal + Number(item[month.key] ?? 0), 0);
-        }, 0);
-        const sorted = [...items].sort((left, right) => Number(right[selectedMonth] ?? 0) - Number(left[selectedMonth] ?? 0));
-        const aboveAverage = items.filter((item) => Number(item[selectedMonth] ?? 0) > selectedMonthTotal / Math.max(items.length, 1)).length;
-        return {
-            selectedMonthTotal,
-            grandTotal,
-            average: grandTotal / months.length,
-            highestName: sorted[0]?.name ?? "Sem contas",
-            highestValue: Number(sorted[0]?.[selectedMonth] ?? 0),
-            aboveAverage
-        };
-    }, [items, selectedMonth]);
+    const monthMetrics = useMemo(() => {
+        return months.map((month) => {
+            const expenses = items.reduce((total, item) => total + Number(item[month.key] ?? 0), 0);
+            const income = Number(incomePlan[month.key] ?? 0);
+            const balance = income - expenses;
+            const health = buildHealthStatus(income, expenses);
+            return {
+                ...month,
+                expenses,
+                income,
+                balance,
+                health
+            };
+        });
+    }, [items, incomePlan]);
 
-    const monthTotals = useMemo(() => {
-        return months.map((month) => ({
-            ...month,
-            total: items.reduce((total, item) => total + Number(item[month.key] ?? 0), 0)
-        }));
-    }, [items]);
+    const selectedMetrics = monthMetrics.find((month) => month.key === selectedMonth) ?? monthMetrics[0];
 
     const rankedItems = useMemo(() => {
         return [...items].sort((left, right) => Number(right[selectedMonth] ?? 0) - Number(left[selectedMonth] ?? 0));
@@ -231,6 +344,10 @@ export default function HomePage() {
 
     const onChange = (key, value) => {
         setForm((current) => ({ ...current, [key]: value }));
+    };
+
+    const onIncomeChange = (key, value) => {
+        setIncomeForm((current) => ({ ...current, [key]: value }));
     };
 
     const persistItem = async (item) => {
@@ -242,6 +359,19 @@ export default function HomePage() {
         const { error } = await supabase
             .from("planning_items")
             .upsert(toDatabaseRow(item, session.user.id), { onConflict: "id" });
+
+        return !error;
+    };
+
+    const persistIncomePlan = async (plan) => {
+        const supabase = getSupabaseClient();
+        if (!supabase || !session) {
+            return true;
+        }
+
+        const { error } = await supabase
+            .from("financial_profiles")
+            .upsert(toIncomeProfileRow(plan, session.user.id), { onConflict: "user_id" });
 
         return !error;
     };
@@ -282,7 +412,7 @@ export default function HomePage() {
         const persisted = await persistItem(item);
 
         if (!persisted && syncMode === "supabase") {
-            window.alert("Nao foi possivel salvar no Supabase.");
+            window.alert("Nao foi possivel salvar a categoria no Supabase.");
             return;
         }
 
@@ -295,6 +425,30 @@ export default function HomePage() {
         resetEditor();
     };
 
+    const saveIncomePlan = async () => {
+        const payload = buildIncomePlanPayload(incomeForm);
+        const persisted = await persistIncomePlan(payload);
+
+        if (!persisted && syncMode === "supabase") {
+            window.alert("Nao foi possivel salvar os ganhos potenciais no Supabase.");
+            return;
+        }
+
+        setIncomePlan(payload);
+    };
+
+    const copyCurrentMonthForward = () => {
+        const currentIndex = months.findIndex((month) => month.key === selectedMonth);
+        const currentValue = incomeForm[selectedMonth];
+        setIncomeForm((current) => {
+            const next = { ...current };
+            for (let index = currentIndex; index < months.length; index += 1) {
+                next[months[index].key] = currentValue;
+            }
+            return next;
+        });
+    };
+
     const startEditing = (item) => {
         setEditingId(item.id);
         setForm(formFromItem(item));
@@ -302,7 +456,7 @@ export default function HomePage() {
     };
 
     const removeItem = async (id) => {
-        const confirmed = window.confirm("Excluir esta conta do planejamento?");
+        const confirmed = window.confirm("Excluir esta categoria do planejamento?");
         if (!confirmed) {
             return;
         }
@@ -328,6 +482,7 @@ export default function HomePage() {
                     {
                         exportedAt: new Date().toISOString(),
                         syncMode,
+                        incomePlan,
                         items
                     },
                     null,
@@ -355,15 +510,21 @@ export default function HomePage() {
             const text = await file.text();
             const parsed = JSON.parse(text);
             const incomingItems = (parsed.items ?? []).map(normalizeItem);
+            const incomingIncomePlan = normalizeIncomePlan(parsed.incomePlan ?? emptyIncomePlan);
 
             if (syncMode === "supabase" && session) {
                 const supabase = getSupabaseClient();
-                const { error } = await supabase
-                    .from("planning_items")
-                    .upsert(incomingItems.map((item) => toDatabaseRow(item, session.user.id)), { onConflict: "id" });
+                const [itemsResult, incomeResult] = await Promise.all([
+                    supabase
+                        .from("planning_items")
+                        .upsert(incomingItems.map((item) => toDatabaseRow(item, session.user.id)), { onConflict: "id" }),
+                    supabase
+                        .from("financial_profiles")
+                        .upsert(toIncomeProfileRow(incomingIncomePlan, session.user.id), { onConflict: "user_id" })
+                ]);
 
-                if (error) {
-                    throw error;
+                if (itemsResult.error || incomeResult.error) {
+                    throw itemsResult.error || incomeResult.error;
                 }
             }
 
@@ -378,6 +539,8 @@ export default function HomePage() {
             }
 
             setItems(merged);
+            setIncomePlan(incomingIncomePlan);
+            setIncomeForm(incomePlanFormFromValues(incomingIncomePlan));
             window.alert("Backup restaurado.");
         } catch {
             window.alert("Nao foi possivel restaurar o backup.");
@@ -447,7 +610,7 @@ export default function HomePage() {
                         <p className="eyebrow">Acesso privado</p>
                         <h1>Entre para carregar apenas os seus dados financeiros.</h1>
                         <p className="hero-copy">
-                            Esta versao usa Supabase com regras por usuario. Cada conta fica isolada pelo seu login.
+                            Esta versao usa Supabase com regras por usuario. Cada conta e cada panorama ficam isolados pelo seu login.
                         </p>
                     </div>
 
@@ -485,11 +648,11 @@ export default function HomePage() {
         <main className="page-shell">
             <section className="hero-card">
                 <div className="hero-copy-block">
-                    <p className="eyebrow">Controle financeiro pessoal</p>
-                    <h1>Planejamento mensal com cara de painel executivo e operacao simples no dia a dia.</h1>
+                    <p className="eyebrow">Painel projetado</p>
+                    <h1>Seu saldo futuro agora parte dos ganhos potenciais de cada mes.</h1>
                     <p className="hero-copy">
-                        A estrutura segue a sua planilha, mas com sincronizacao web, backup e leitura mais clara para
-                        decidir rapido onde o mes esta pesando.
+                        Defina salario, alugueis e outras entradas como base. O sistema cruza isso com as faturas e te diz
+                        se o mes deve fechar no verde, amarelo ou vermelho.
                     </p>
                 </div>
                 <div className="hero-actions">
@@ -500,12 +663,12 @@ export default function HomePage() {
                     </div>
                     <div className="hero-metrics">
                         <div>
-                            <span>Mes selecionado</span>
+                            <span>Mes foco</span>
                             <strong>{monthLabel}</strong>
                         </div>
                         <div>
-                            <span>Contas acima da media</span>
-                            <strong>{summary.aboveAverage}</strong>
+                            <span>Status</span>
+                            <strong>{selectedMetrics?.health.label ?? "Sem leitura"}</strong>
                         </div>
                     </div>
                     <button className="primary-button" onClick={exportBackup}>Exportar backup</button>
@@ -515,62 +678,115 @@ export default function HomePage() {
                 </div>
             </section>
 
-            <section className="month-strip">
-                {months.map((month) => (
-                    <button
-                        key={month.key}
-                        className={month.key === selectedMonth ? "month-pill active" : "month-pill"}
-                        onClick={() => setSelectedMonth(month.key)}
-                    >
-                        <span>{month.shortLabel}</span>
-                        <strong>{month.label}</strong>
-                    </button>
-                ))}
+            <section className="forecast-strip">
+                {visibleMonths.map((month) => {
+                    const metrics = monthMetrics.find((entry) => entry.key === month.key);
+                    return (
+                        <button
+                            key={month.key}
+                            className={month.key === selectedMonth ? `forecast-card active ${metrics.health.tone}` : `forecast-card ${metrics.health.tone}`}
+                            onClick={() => setSelectedMonth(month.key)}
+                        >
+                            <div className="forecast-header">
+                                <span>{month.shortLabel}</span>
+                                <strong>{month.label}</strong>
+                            </div>
+                            <div className="status-chip">{metrics.health.label}</div>
+                            <div className="forecast-values">
+                                <small>Ganhos {currency(metrics.income)}</small>
+                                <small>Faturas {currency(metrics.expenses)}</small>
+                                <strong>{currency(metrics.balance)}</strong>
+                            </div>
+                        </button>
+                    );
+                })}
             </section>
 
             <section className="summary-grid">
                 <article className="summary-card focus-card">
-                    <p>Total de {monthLabel}</p>
-                    <h2>{currency(summary.selectedMonthTotal)}</h2>
-                    <span>Panorama principal do periodo escolhido</span>
+                    <p>Saldo projetado de {monthLabel}</p>
+                    <h2>{currency(selectedMetrics?.balance ?? 0)}</h2>
+                    <span>{selectedMetrics?.health.description ?? "Sem leitura."}</span>
                 </article>
                 <article className="summary-card">
-                    <p>Total geral</p>
-                    <h2>{currency(summary.grandTotal)}</h2>
-                    <span>Acumulado de setembro a julho</span>
+                    <p>Ganhos potenciais</p>
+                    <h2>{currency(selectedMetrics?.income ?? 0)}</h2>
+                    <span>Base do calculo geral deste mes</span>
                 </article>
                 <article className="summary-card">
-                    <p>Media mensal</p>
-                    <h2>{currency(summary.average)}</h2>
-                    <span>Leitura media da base inteira</span>
+                    <p>Faturas previstas</p>
+                    <h2>{currency(selectedMetrics?.expenses ?? 0)}</h2>
+                    <span>Soma das categorias planejadas</span>
                 </article>
-                <article className="summary-card">
-                    <p>Maior peso no mes</p>
-                    <h2>{summary.highestName}</h2>
-                    <span>{currency(summary.highestValue)}</span>
+                <article className={`summary-card status-card ${selectedMetrics?.health.tone ?? ""}`}>
+                    <p>Panorama</p>
+                    <h2>{selectedMetrics?.health.label ?? "Sem base"}</h2>
+                    <span>{selectedMetrics?.health.description ?? "Defina as entradas do mes."}</span>
                 </article>
             </section>
 
-            <section className="editor-grid">
+            <section className="editor-grid three-columns">
+                <article className="panel income-panel">
+                    <div className="panel-header">
+                        <div>
+                            <p className="eyebrow">Base do calculo</p>
+                            <h3>Ganhos potenciais por mes</h3>
+                        </div>
+                        <button className="ghost-button" type="button" onClick={copyCurrentMonthForward}>
+                            Replicar mes foco para frente
+                        </button>
+                    </div>
+                    <div className="income-helper">
+                        Use estes campos para somar salario, alugueis, comissoes e outras entradas. O panorama acima usa
+                        esse card como base.
+                    </div>
+                    <div className="income-grid">
+                        {visibleMonths.map((month) => (
+                            <label key={month.key} className={month.key === selectedMonth ? "income-cell active" : "income-cell"}>
+                                <span>{month.label}</span>
+                                <input
+                                    value={incomeForm[month.key]}
+                                    onChange={(event) => onIncomeChange(month.key, event.target.value)}
+                                    placeholder="0,00"
+                                    inputMode="decimal"
+                                />
+                            </label>
+                        ))}
+                    </div>
+                    <button className="primary-button" type="button" onClick={saveIncomePlan}>
+                        Salvar ganhos potenciais
+                    </button>
+                </article>
+
                 <article className="panel chart-panel">
                     <div className="panel-header">
                         <div>
-                            <p className="eyebrow">Comparativo</p>
-                            <h3>Totais por mes</h3>
+                            <p className="eyebrow">Leitura sequencial</p>
+                            <h3>Panorama dos meses seguintes</h3>
                         </div>
                     </div>
                     <div className="bars">
-                        {monthTotals.map((month) => {
-                            const max = Math.max(...monthTotals.map((entry) => entry.total), 1);
-                            const width = `${Math.max(6, (month.total / max) * 100)}%`;
+                        {visibleMonths.map((month) => {
+                            const metrics = monthMetrics.find((entry) => entry.key === month.key);
+                            const max = Math.max(...visibleMonths.map((entry) => {
+                                const current = monthMetrics.find((row) => row.key === entry.key);
+                                return Math.max(current.income, current.expenses, Math.abs(current.balance));
+                            }), 1);
                             return (
                                 <div key={month.key} className="bar-row">
                                     <div className="bar-copy">
                                         <strong>{month.label}</strong>
-                                        <span>{currency(month.total)}</span>
+                                        <span>{metrics.health.label}</span>
                                     </div>
-                                    <div className="bar-track">
-                                        <div className={month.key === selectedMonth ? "bar-fill active" : "bar-fill"} style={{ width }} />
+                                    <div className="dual-bar-stack">
+                                        <div className="dual-bar-label">Entradas</div>
+                                        <div className="bar-track">
+                                            <div className="bar-fill success" style={{ width: `${Math.max(4, (metrics.income / max) * 100)}%` }} />
+                                        </div>
+                                        <div className="dual-bar-label">Saidas</div>
+                                        <div className="bar-track">
+                                            <div className="bar-fill warning" style={{ width: `${Math.max(4, (metrics.expenses / max) * 100)}%` }} />
+                                        </div>
                                     </div>
                                 </div>
                             );
@@ -582,7 +798,7 @@ export default function HomePage() {
                     <div className="panel-header">
                         <div>
                             <p className="eyebrow">{editingId ? "Edicao" : "Novo cadastro"}</p>
-                            <h3>{editingId ? "Editar conta" : "Adicionar conta"}</h3>
+                            <h3>{editingId ? "Editar categoria" : "Adicionar categoria"}</h3>
                         </div>
                         {editingId ? (
                             <button className="ghost-button" type="button" onClick={resetEditor}>
@@ -592,7 +808,7 @@ export default function HomePage() {
                     </div>
                     <form className="entry-form" onSubmit={onSubmit}>
                         <div className="form-lead">
-                            <input value={form.name} onChange={(event) => onChange("name", event.target.value)} placeholder="Nome da conta" />
+                            <input value={form.name} onChange={(event) => onChange("name", event.target.value)} placeholder="Nome da categoria ou fatura" />
                             <textarea value={form.notes} onChange={(event) => onChange("notes", event.target.value)} placeholder="Observacoes" rows={3} />
                         </div>
                         <div className="month-input-grid">
@@ -609,7 +825,7 @@ export default function HomePage() {
                             ))}
                         </div>
                         <button className="primary-button" type="submit">
-                            {editingId ? "Salvar alteracoes" : "Salvar conta"}
+                            {editingId ? "Salvar alteracoes" : "Salvar categoria"}
                         </button>
                     </form>
                 </article>
@@ -618,10 +834,10 @@ export default function HomePage() {
             <section className="panel accounts-panel">
                 <div className="panel-header">
                     <div>
-                        <p className="eyebrow">Leitura mensal</p>
-                        <h3>Contas em {monthLabel}</h3>
+                        <p className="eyebrow">Categorias e faturas</p>
+                        <h3>Valores por mes em {monthLabel}</h3>
                     </div>
-                    <span className="panel-count">{rankedItems.length} contas</span>
+                    <span className="panel-count">{rankedItems.length} categorias</span>
                 </div>
 
                 <div className="table-list">
